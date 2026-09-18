@@ -1,3 +1,4 @@
+import { getWeather } from "@/lib/weather/weather";
 import { geocodeDestination } from "@/lib/location/geocoding";
 import type {
   TravelPlanApiRequest,
@@ -26,20 +27,25 @@ export async function POST(
       { status: 404 }
     );
   }
+  const weather = await getWeather(
+  location.latitude,
+  location.longitude
+);
 
   const resolvedRequest = {
-    ...body.request,
-    destination: {
-      ...body.request.destination,
-      name: location.name,
-      country: location.country,
-      coordinates: {
-        lat: location.latitude,
-        lng: location.longitude,
-      },
-      resolution: "resolved" as const,
+  ...body.request,
+  destination: {
+    ...body.request.destination,
+    name: location.name,
+    country: location.country,
+    coordinates: {
+      lat: location.latitude,
+      lng: location.longitude,
     },
-  };
+    resolution: "resolved" as const,
+  },
+  weather,
+};
 
   const now = new Date().toISOString();
 
