@@ -3,11 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { PACE_OPTIONS } from "@/lib/constants";
-import {
-  createDraftId,
-  emptyTripRequest,
-  saveTripDraft,
-} from "@/lib/trip-session";
+import { emptyTripRequest } from "@/lib/trip-session";
 import type { DailyPace, TripRequest } from "@/types/trip";
 import { BudgetInput } from "./BudgetInput";
 import { DateRangeInput } from "./DateRangeInput";
@@ -24,53 +20,90 @@ export function TripPlanner() {
     setRequest((current) => ({ ...current, ...partial }));
   }
 
-  function onSubmit(event: FormEvent) {
-    event.preventDefault();
-    if (!request.destination.query.trim()) {
-      setError("Add a destination.");
-      return;
-    }
-    if (!request.startDate || !request.endDate) {
-      setError("Choose start and end dates.");
-      return;
-    }
-    if (request.endDate < request.startDate) {
-      setError("End date must be on or after the start date.");
-      return;
-    }
-    if (request.travelers < 1) {
-      setError("There must be at least one traveler.");
-      return;
-    }
-    if (request.budget <= 0) {
-      setError("Enter a budget greater than zero.");
-      return;
-    }
-    if (request.interests.length === 0) {
-      setError("Select at least one interest so constraints have something to match.");
-      return;
-    }
+  async function onSubmit(event: FormEvent) {
+  event.preventDefault();
 
-    const resolved: TripRequest = {
-      ...request,
-      destination: {
-        ...request.destination,
-        query: request.destination.query.trim(),
-        resolution:
-          request.destination.resolution === "resolved"
-            ? "resolved"
-            : "suggested",
-      },
-    };
-
-    const id = createDraftId();
-    saveTripDraft({
-      id,
-      request: resolved,
-      createdAt: new Date().toISOString(),
-    });
-    router.push(`/plan/loading?tripId=${id}`);
+  if (!request.destination.query.trim()) {
+    setError("Add a destination.");
+    return;
   }
+
+  if (!request.startDate || !request.endDate) {
+    setError("Choose start and end dates.");
+    return;
+  }
+
+  if (request.endDate < request.startDate) {
+    setError("End date must be on or after the start date.");
+    return;
+  }
+
+  if (request.travelers < 1) {
+    setError("There must be at least one traveler.");
+    return;
+  }
+
+  if (request.budget <= 0) {
+    setError("Enter a budget greater than zero.");
+    return;
+  }
+
+  if (request.interests.length === 0) {
+    setError(
+      "Select at least one interest so constraints have something to match."
+    );
+    return;
+  }
+
+  setError(null);
+
+  const resolved: TripRequest = {
+    ...request,
+    destination: {
+      ...request.destination,
+      query: request.destination.query.trim(),
+      resolution:
+        request.destination.resolution === "resolved"
+          ? "resolved"
+          : "suggested",
+    },
+  };
+
+  try {
+    const response = await fetch("/api/travel-plan", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        request: resolved,
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Failed to create travel plan.");
+    }
+
+    console.log("TRAVEL PLAN API RESPONSE:", data);
+
+    const id = data.trip.id;
+
+sessionStorage.setItem(
+  `stayora.trip.${id}`,
+  JSON.stringify(data.trip)
+);
+
+router.push(`/plan/loading?tripId=${id}`);
+  } catch (error) {
+    setError(
+      error instanceof Error
+        ? error.message
+        : "Something went wrong while planning the trip."
+    );
+  }
+}
 
   return (
     <form onSubmit={onSubmit} className="space-y-8">
