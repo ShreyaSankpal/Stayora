@@ -1,3 +1,4 @@
+import { evaluateConstraints } from "@/lib/travel/constraints";
 import { normalizeTravelData } from "@/lib/travel/normalizer";
 import { getWeather } from "@/lib/weather/weather";
 import { getPlaces } from "@/lib/places/places";
@@ -42,6 +43,10 @@ const normalizedData = normalizeTravelData(
   weather,
   places
 );
+const feasibility = evaluateConstraints(
+  body.request,
+  normalizedData
+);
 
  const resolvedRequest = {
   ...body.request,
@@ -53,12 +58,18 @@ const normalizedData = normalizeTravelData(
   const now = new Date().toISOString();
 
   const trip: TravelPlanApiResponse["trip"] = {
-    id: crypto.randomUUID(),
-    status: "planning",
-    createdAt: now,
-    updatedAt: now,
-    request: resolvedRequest,
-  };
+  id: crypto.randomUUID(),
+  status:
+    feasibility.overall === "needs_replanning"
+      ? "needs_replanning"
+      : feasibility.overall === "warning"
+        ? "warning"
+        : "valid",
+  createdAt: now,
+  updatedAt: now,
+  request: resolvedRequest,
+  feasibility,
+};
   console.log("FINAL TRIP RESPONSE:", JSON.stringify(trip, null, 2));
 
   return Response.json({ trip });
