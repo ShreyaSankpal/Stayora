@@ -1,4 +1,6 @@
+import { normalizeTravelData } from "@/lib/travel/normalizer";
 import { getWeather } from "@/lib/weather/weather";
+import { getPlaces } from "@/lib/places/places";
 import { geocodeDestination } from "@/lib/location/geocoding";
 import type {
   TravelPlanApiRequest,
@@ -31,20 +33,21 @@ export async function POST(
   location.latitude,
   location.longitude
 );
-
-  const resolvedRequest = {
-  ...body.request,
-  destination: {
-    ...body.request.destination,
-    name: location.name,
-    country: location.country,
-    coordinates: {
-      lat: location.latitude,
-      lng: location.longitude,
-    },
-    resolution: "resolved" as const,
-  },
+const places = await getPlaces(
+  location.latitude,
+  location.longitude
+);
+const normalizedData = normalizeTravelData(
+  location,
   weather,
+  places
+);
+
+ const resolvedRequest = {
+  ...body.request,
+  destination: normalizedData.destination,
+  weather: normalizedData.weather,
+  places: normalizedData.places,
 };
 
   const now = new Date().toISOString();
@@ -56,6 +59,7 @@ export async function POST(
     updatedAt: now,
     request: resolvedRequest,
   };
+  console.log("FINAL TRIP RESPONSE:", JSON.stringify(trip, null, 2));
 
   return Response.json({ trip });
 }
