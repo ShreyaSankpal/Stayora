@@ -1,3 +1,4 @@
+import { calculateTravelTimes } from "@/lib/travel/routing";
 import { evaluateConstraints } from "@/lib/travel/constraints";
 import { normalizeTravelData } from "@/lib/travel/normalizer";
 import { getWeather } from "@/lib/weather/weather";
@@ -43,16 +44,21 @@ const normalizedData = normalizeTravelData(
   weather,
   places
 );
+
+const travelDataWithRoutes = await calculateTravelTimes(
+  normalizedData
+);
+
 const feasibility = evaluateConstraints(
   body.request,
-  normalizedData
+  travelDataWithRoutes
 );
 
  const resolvedRequest = {
   ...body.request,
-  destination: normalizedData.destination,
-  weather: normalizedData.weather,
-  places: normalizedData.places,
+  destination: travelDataWithRoutes.destination,
+  weather: travelDataWithRoutes.weather,
+  places: travelDataWithRoutes.places,
 };
 
   const now = new Date().toISOString();
