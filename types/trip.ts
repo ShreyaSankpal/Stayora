@@ -3,7 +3,7 @@
  * These describe the eventual API contract (TripRequest in, Trip out),
  * not a specific UI component.
  */
-
+import type { WeatherResult } from "@/lib/weather/weather";
 export type CurrencyCode =
   | "USD"
   | "EUR"
@@ -88,6 +88,13 @@ export interface Destination {
   coordinates?: Coordinates;
   resolution: DestinationResolution;
 }
+export interface TravelPlace {
+  name: string;
+  coordinates: Coordinates;
+  category: string;
+  distanceFromDestinationKm?: number;
+  travelTimeFromDestinationMinutes?: number;
+}
 
 export interface TripRequest {
   destination: Destination;
@@ -101,6 +108,7 @@ export interface TripRequest {
   dailyPace: DailyPace;
   maxTravelTimeMinutes: number;
   additionalPreferences: string;
+  places?: TravelPlace[];
 }
 
 export interface Weather {
@@ -229,4 +237,15 @@ export interface TravelPlanApiRequest {
 /** Payload the planner will eventually receive from /api/travel-plan */
 export interface TravelPlanApiResponse {
   trip: Trip;
+}
+
+export interface AIItineraryInput {
+  request: TripRequest;
+  weather: WeatherResult;
+  eligiblePlaces: TravelPlace[];
+}
+
+export interface AIItineraryOutput {
+  itinerary: Itinerary;
+  budgetBreakdown: BudgetBreakdown;
 }

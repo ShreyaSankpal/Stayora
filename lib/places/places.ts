@@ -5,55 +5,204 @@ export interface PlaceResult {
   category: string;
 }
 
-const PLACE_CATEGORIES = [
-  "attraction",
-  "food_and_drink",
-  "shopping",
-  "park",
-] as const;
+interface GeoapifyFeature {
+  properties?: {
+    name?: string;
+    categories?: string[];
+  };
+  geometry?: {
+    coordinates?: [number, number];
+  };
+}
+
+interface GeoapifyResponse {
+  features?: GeoapifyFeature[];
+}
+
+const SEARCH_CATEGORIES = [
+  "tourism.attraction",
+  "tourism.sights",
+  "entertainment.museum",
+  "natural",
+  "catering.restaurant",
+  "catering.cafe",
+];
+
+const MAX_DISTANCE_KM = 50;
 
 export async function getPlaces(
   latitude: number,
   longitude: number
 ): Promise<PlaceResult[]> {
-  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+  const apiKey = process.env.GEOAPIFY_API_KEY;
 
-  if (!token) {
-    throw new Error("Mapbox token is missing");
+  if (!apiKey) {
+    throw new Error("Geoapify API key is missing");
   }
 
   const results = await Promise.all(
-    PLACE_CATEGORIES.map(async (category) => {
-      const url = new URL(
-        `https://api.mapbox.com/search/searchbox/v1/category/${category}`
-      );
-
-      url.searchParams.set("proximity", `${longitude},${latitude}`);
-      url.searchParams.set("limit", "5");
-      url.searchParams.set("access_token", token);
-
-      const response = await fetch(url);
-
-      if (!response.ok) {
-        throw new Error(
-          `Failed to fetch ${category}: ${response.status} ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-
-      return data.features.map((feature: any) => ({
-        name: feature.properties.name,
-        latitude: feature.geometry.coordinates[1],
-        longitude: feature.geometry.coordinates[0],
+    SEARCH_CATEGORIES.map((category) =>
+      searchPlaces(
         category,
-      }));
-    })
+        latitude,
+        longitude,
+        apiKey
+      )
+    )
   );
 
-  const places = results.flat();
+  const uniquePlaces = new Map<string, PlaceResult>();
 
-  console.log("MAPBOX PLACES:", places);
+  for (const place of results.flat()) {
+    const distance = calculateDistanceKm(
+      latitude,
+      longitude,
+      place.latitude,
+      place.longitude
+    );
 
-  return places;
+    if (distance > MAX_DISTANCE_KM) {
+      continue;
+    }
+
+    const key = normalizePlaceName(place.name);
+
+    if (!uniquePlaces.has(key)) {
+      uniquePlaces.set(key, place);
+    }
+  }
+
+  return Array.from(uniquePlaces.values()).slice(0, 20);
+}
+
+async function searchPlaces(
+  category: string,
+  latitude: number,
+  longitude: number,
+  apiKey: string
+): Promise<PlaceResult[]> {
+  const url = new URL(
+    "https://api.geoapify.com/v2/places"
+  );
+
+  url.searchParams.set(
+    "categories",
+    category
+  );
+
+  url.searchParams.set(
+    "filter",
+    `circle:${longitude},${latitude},50000`
+  );
+
+  url.searchParams.set(
+    "bias",
+    `proximity:${longitude},${latitude}`
+  );
+
+  url.searchParams.set(
+    "limit",
+    "20"
+  );
+
+  url.searchParams.set(
+    "lang",
+    "en"
+  );
+
+  url.searchParams.set(
+    "apiKey",
+    apiKey
+  );
+
+  const response = await fetch(url);
+
+  if (!response.ok) {
+    const errorText = await response.text();
+
+    throw new Error(
+      "Geoapify places search failed: " +
+        response.status +
+        " " +
+        response.statusText +
+        " " +
+        errorText
+    );
+  }
+
+  const data =
+    (await response.json()) as GeoapifyResponse;
+
+  return (data.features ?? [])
+    .map((feature) => {
+      const coordinates =
+        feature.geometry?.coordinates;
+
+      const name =
+        feature.properties?.name;
+
+      if (!coordinates || !name) {
+        return null;
+      }
+
+      return {
+        name,
+        latitude: coordinates[1],
+        longitude: coordinates[0],
+        category:
+          feature.properties?.categories?.[0] ??
+          category,
+      };
+    })
+    .filter(
+      (place): place is PlaceResult =>
+        place !== null
+    );
+}
+
+function normalizePlaceName(
+  name: string
+): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function calculateDistanceKm(
+  latitude1: number,
+  longitude1: number,
+  latitude2: number,
+  longitude2: number
+): number {
+  const earthRadiusKm = 6371;
+
+  const latitudeDifference = toRadians(
+    latitude2 - latitude1
+  );
+
+  const longitudeDifference = toRadians(
+    longitude2 - longitude1
+  );
+
+  const a =
+    Math.sin(latitudeDifference / 2) ** 2 +
+    Math.cos(toRadians(latitude1)) *
+      Math.cos(toRadians(latitude2)) *
+      Math.sin(longitudeDifference / 2) ** 2;
+
+  const c =
+    2 *
+    Math.atan2(
+      Math.sqrt(a),
+      Math.sqrt(1 - a)
+    );
+
+  return earthRadiusKm * c;
+}
+
+function toRadians(
+  degrees: number
+): number {
+  return (degrees * Math.PI) / 180;
 }

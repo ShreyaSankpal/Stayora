@@ -10,6 +10,8 @@ export interface NormalizedPlace {
     lng: number;
   };
   category: string;
+  distanceFromDestinationKm?: number;
+  travelTimeFromDestinationMinutes?: number;
 }
 
 export interface NormalizedTravelData {

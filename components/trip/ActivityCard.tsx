@@ -50,7 +50,9 @@ export function ActivityCard({
           </div>
         ) : null}
       </dl>
-      <RecommendationReasonList reasons={activity.reasons} />
+      <RecommendationReasonList
+  reasons={activity.reasons ?? []}
+/>
     </article>
   );
 }

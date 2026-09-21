@@ -32,9 +32,9 @@ export function ItineraryDayCard({
           <div key={segment.key}>
             <h4 className="mb-2 text-sm font-semibold">{segment.label}</h4>
             <div className="space-y-3">
-              {day.segments[segment.key].map((activity) => (
-                <ActivityCard
-                  key={activity.id}
+              {day.segments[segment.key].map((activity, index) => (
+  <ActivityCard
+    key={activity.id || `${segment.key}-${index}`}
                   activity={activity}
                   currency={currency}
                 />

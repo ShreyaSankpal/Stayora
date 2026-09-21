@@ -14,7 +14,7 @@ export function evaluateConstraints(
 
   checks.push(checkBudget(request));
   checks.push(checkSchedule(request));
-  checks.push(checkTravelTime(request));
+  checks.push(checkTravelTime(request, travelData));
   checks.push(checkDistance(travelData));
   checks.push(checkWeather(travelData));
 
@@ -78,7 +78,10 @@ function checkSchedule(request: TripRequest): ConstraintResult {
   };
 }
 
-function checkTravelTime(request: TripRequest): ConstraintResult {
+function checkTravelTime(
+  request: TripRequest,
+  travelData: NormalizedTravelData
+): ConstraintResult {
   if (request.maxTravelTimeMinutes <= 0) {
     return {
       id: "travel_time",
@@ -88,11 +91,37 @@ function checkTravelTime(request: TripRequest): ConstraintResult {
     };
   }
 
+  if (travelData.places.length === 0) {
+    return {
+      id: "travel_time",
+      label: "Travel time",
+      status: "warning",
+      summary:
+        "No places were returned, so travel-time constraints cannot be evaluated yet.",
+    };
+  }
+
+  const placesOverLimit = travelData.places.filter(
+    (place) =>
+      place.travelTimeFromDestinationMinutes !== undefined &&
+      place.travelTimeFromDestinationMinutes >
+        request.maxTravelTimeMinutes
+  );
+
+  if (placesOverLimit.length > 0) {
+    return {
+      id: "travel_time",
+      label: "Travel time",
+      status: "warning",
+      summary: `${placesOverLimit.length} place(s) exceed your ${request.maxTravelTimeMinutes}-minute travel-time limit.`,
+    };
+  }
+
   return {
     id: "travel_time",
     label: "Travel time",
     status: "valid",
-    summary: `Activities should stay within ${request.maxTravelTimeMinutes} minutes of travel time where possible.`,
+    summary: `All available places are within your ${request.maxTravelTimeMinutes}-minute travel-time limit.`,
   };
 }
 
@@ -157,7 +186,7 @@ function getOverallSummary(status: ConstraintStatus): string {
   }
 
   if (status === "warning") {
-    return "The trip can continue, but some constraints have limited data.";
+    return "The trip can continue, but some places do not satisfy all travel constraints.";
   }
 
   return "The available trip constraints are currently satisfied.";
