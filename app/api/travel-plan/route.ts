@@ -8,6 +8,8 @@ import { getWeather } from "@/lib/weather/weather";
 import { getPlaces } from "@/lib/places/places";
 import { geocodeDestination } from "@/lib/location/geocoding";
 import type {
+  ConstraintResult,
+  ConstraintStatus,
   TravelPlanApiRequest,
   TravelPlanApiResponse,
 } from "@/types/trip";
@@ -38,12 +40,14 @@ export async function POST(
       { status: 404 }
     );
   }
-const weather = await getWeather(
-  location.latitude,
-  location.longitude,
-  body.request.startDate,
-  body.request.endDate
-);
+
+  const weather = await getWeather(
+    location.latitude,
+    location.longitude,
+    body.request.startDate,
+    body.request.endDate
+  );
+
   const places = await getPlaces(
     location.latitude,
     location.longitude
@@ -57,19 +61,29 @@ const weather = await getWeather(
 
   const travelDataWithRoutes =
     await calculateTravelTimes(normalizedData);
- const eligiblePlaces = filterEligiblePlaces(
-  body.request,
-  travelDataWithRoutes.places
-);
-  
-  const feasibility = evaluateConstraints(
-  body.request,
-  {
-    ...travelDataWithRoutes,
-    places: eligiblePlaces,
-  }
-);
 
+  const eligiblePlaces = filterEligiblePlaces(
+    body.request,
+    travelDataWithRoutes.places
+  );
+
+  /*
+   * Step 1:
+   * Check constraints that can be evaluated
+   * before generating the itinerary.
+   */
+  const feasibility = evaluateConstraints(
+    body.request,
+    {
+      ...travelDataWithRoutes,
+      places: eligiblePlaces,
+    }
+  );
+
+  /*
+   * Step 2:
+   * Generate the AI itinerary.
+   */
   const aiPlan = await generateItinerary({
     request: {
       ...body.request,
@@ -79,10 +93,53 @@ const weather = await getWeather(
     eligiblePlaces,
   });
 
+  /*
+   * Step 3:
+   * Calculate the estimated cost of the
+   * generated itinerary.
+   */
   const budgetBreakdown = calculateBudget({
     request: body.request,
     itinerary: aiPlan.itinerary,
   });
+
+  /*
+   * Step 4:
+   * Validate the final estimated budget.
+   */
+  const budgetCheck = checkFinalBudget(
+    body.request.budget,
+    budgetBreakdown.estimatedTotal,
+    body.request.currency
+  );
+
+  const finalChecks = feasibility.checks.filter(
+    (check) => check.id !== "overall"
+  );
+
+  const existingBudgetIndex = finalChecks.findIndex(
+    (check) => check.id === "budget"
+  );
+
+  if (existingBudgetIndex !== -1) {
+    finalChecks[existingBudgetIndex] = budgetCheck;
+  } else {
+    finalChecks.push(budgetCheck);
+  }
+
+  const finalOverall = getOverallStatus(finalChecks);
+
+  finalChecks.push({
+    id: "overall",
+    label: "Overall feasibility",
+    status: finalOverall,
+    summary: getOverallSummary(finalOverall),
+  });
+
+  const finalFeasibility = {
+    overall: finalOverall,
+    checks: finalChecks,
+  };
 
   const resolvedRequest = {
     ...body.request,
@@ -96,15 +153,15 @@ const weather = await getWeather(
   const trip: TravelPlanApiResponse["trip"] = {
     id: crypto.randomUUID(),
     status:
-      feasibility.overall === "needs_replanning"
+      finalFeasibility.overall === "needs_replanning"
         ? "needs_replanning"
-        : feasibility.overall === "warning"
+        : finalFeasibility.overall === "warning"
           ? "warning"
           : "valid",
     createdAt: now,
     updatedAt: now,
     request: resolvedRequest,
-    feasibility,
+    feasibility: finalFeasibility,
     itinerary: aiPlan.itinerary,
     budgetBreakdown,
   };
@@ -115,4 +172,71 @@ const weather = await getWeather(
   );
 
   return Response.json({ trip });
+}
+
+function checkFinalBudget(
+  budget: number,
+  estimatedTotal: number,
+  currency: string
+): ConstraintResult {
+  if (budget <= 0) {
+    return {
+      id: "budget",
+      label: "Budget",
+      status: "needs_replanning",
+      summary: "The trip budget must be greater than zero.",
+    };
+  }
+
+  if (estimatedTotal > budget) {
+    return {
+      id: "budget",
+      label: "Budget",
+      status: "needs_replanning",
+      summary: `The estimated trip cost is ${currency} ${estimatedTotal}, which exceeds your ${currency} ${budget} budget.`,
+    };
+  }
+
+  return {
+    id: "budget",
+    label: "Budget",
+    status: "valid",
+    summary: `The estimated trip cost of ${currency} ${estimatedTotal} is within your ${currency} ${budget} budget.`,
+  };
+}
+
+function getOverallStatus(
+  checks: ConstraintResult[]
+): ConstraintStatus {
+  if (
+    checks.some(
+      (check) => check.status === "needs_replanning"
+    )
+  ) {
+    return "needs_replanning";
+  }
+
+  if (
+    checks.some(
+      (check) => check.status === "warning"
+    )
+  ) {
+    return "warning";
+  }
+
+  return "valid";
+}
+
+function getOverallSummary(
+  status: ConstraintStatus
+): string {
+  if (status === "needs_replanning") {
+    return "One or more constraints require changes before planning can continue.";
+  }
+
+  if (status === "warning") {
+    return "The trip can continue, but some places do not satisfy all travel constraints.";
+  }
+
+  return "The available trip constraints are currently satisfied.";
 }
