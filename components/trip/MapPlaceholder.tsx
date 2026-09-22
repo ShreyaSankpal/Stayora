@@ -52,16 +52,12 @@ export function MapPlaceholder({
     (marker) => marker.coordinates
   );
 
-  const routeCoordinates = activityMarkers
-    .map((marker) => marker.coordinates)
-    .filter(
-      (coordinates): coordinates is Coordinates =>
-        coordinates !== undefined
-    )
-    .map((coordinates) => [
-      coordinates.lat,
-      coordinates.lng,
-    ] as [number, number]);
+ const routeCoordinates =
+  itinerary?.days.flatMap(
+    (day) => day.routeGeometry ?? []
+  ) ?? [];
+
+console.log("ROUTE GEOMETRY:", routeCoordinates);
 
   const destinationCoordinates = destination?.coordinates;
 

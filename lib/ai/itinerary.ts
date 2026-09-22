@@ -498,21 +498,40 @@ function enrichItineraryWithRealData(
       ? createWeatherFromForecast(forecast)
       : undefined;
 
+    const allActivities = [
+      ...day.segments.morning,
+      ...day.segments.afternoon,
+      ...day.segments.evening,
+    ];
+
+    const enrichedActivities =
+      enrichActivitiesWithRouting(
+        allActivities,
+        input
+      );
+
+    let activityIndex = 0;
+
     return {
       ...day,
       weather,
       segments: {
-        morning: enrichActivities(
-          day.segments.morning,
-          input
+        morning: enrichedActivities.slice(
+          activityIndex,
+          (activityIndex +=
+            day.segments.morning.length)
         ),
-        afternoon: enrichActivities(
-          day.segments.afternoon,
-          input
+
+        afternoon: enrichedActivities.slice(
+          activityIndex,
+          (activityIndex +=
+            day.segments.afternoon.length)
         ),
-        evening: enrichActivities(
-          day.segments.evening,
-          input
+
+        evening: enrichedActivities.slice(
+          activityIndex,
+          (activityIndex +=
+            day.segments.evening.length)
         ),
       },
     };
@@ -524,28 +543,64 @@ function enrichItineraryWithRealData(
   };
 }
 
-function enrichActivities(
+function enrichActivitiesWithRouting(
   activities: Activity[],
   input: AIItineraryInput
 ): Activity[] {
+  let previousPlaceIndex: number | null = null;
+
   return activities.map((activity) => {
-    const matchingPlace =
-      findMatchingPlace(
-        activity.name,
-        input.eligiblePlaces
-      );
+    const matchingPlace = findMatchingPlace(
+      activity.name,
+      input.eligiblePlaces
+    );
 
     if (!matchingPlace) {
       return activity;
     }
 
+    const currentPlaceIndex =
+      input.eligiblePlaces.findIndex(
+        (place) =>
+          normalizeName(place.name) ===
+          normalizeName(matchingPlace.name)
+      );
+
+    if (currentPlaceIndex === -1) {
+      return activity;
+    }
+
+    let distanceFromPreviousKm =
+      matchingPlace.distanceFromDestinationKm;
+
+    let travelTimeFromPreviousMinutes =
+      matchingPlace.travelTimeFromDestinationMinutes;
+
+    if (
+      previousPlaceIndex !== null &&
+      input.routing?.betweenPlaces[
+        previousPlaceIndex
+      ]?.[currentPlaceIndex]
+    ) {
+      const route =
+        input.routing.betweenPlaces[
+          previousPlaceIndex
+        ][currentPlaceIndex];
+
+      distanceFromPreviousKm =
+        route.distanceKm;
+
+      travelTimeFromPreviousMinutes =
+        route.travelTimeMinutes;
+    }
+
+    previousPlaceIndex = currentPlaceIndex;
+
     return {
       ...activity,
       coordinates: matchingPlace.coordinates,
-      distanceFromPreviousKm:
-        matchingPlace.distanceFromDestinationKm,
-      travelTimeFromPreviousMinutes:
-        matchingPlace.travelTimeFromDestinationMinutes,
+      distanceFromPreviousKm,
+      travelTimeFromPreviousMinutes,
     };
   });
 }

@@ -1,7 +1,8 @@
-import { calculateBudget } from "@/lib/travel/budget";
+import { calculateBudgetBreakdown } from "@/lib/travel/budget";
 import { generateItinerary } from "@/lib/ai/itinerary";
 import { filterEligiblePlaces } from "@/lib/travel/filter";
-import { calculateTravelTimes } from "@/lib/travel/routing";
+import { calculateTravelTimes,
+  calculateRouteGeometry, } from "@/lib/travel/routing";
 import { evaluateConstraints } from "@/lib/travel/constraints";
 import { normalizeTravelData } from "@/lib/travel/normalizer";
 import { getWeather } from "@/lib/weather/weather";
@@ -85,23 +86,78 @@ export async function POST(
    * Generate the AI itinerary.
    */
   const aiPlan = await generateItinerary({
-    request: {
-      ...body.request,
-      destination: travelDataWithRoutes.destination,
-    },
-    weather: travelDataWithRoutes.weather,
-    eligiblePlaces,
-  });
-
+  request: body.request,
+  weather: travelDataWithRoutes.weather,
+  eligiblePlaces,
+  routing: travelDataWithRoutes.routing,
+});
   /*
    * Step 3:
    * Calculate the estimated cost of the
    * generated itinerary.
    */
-  const budgetBreakdown = calculateBudget({
-    request: body.request,
-    itinerary: aiPlan.itinerary,
+
+const routeGeometryByDay = await Promise.all(
+  aiPlan.itinerary.days.map(async (day) => {
+    const points = getDayRoutePoints(
+      day,
+      travelDataWithRoutes.destination
+    );
+
+    if (points.length < 2) {
+      return [];
+    }
+
+    return calculateRouteGeometry(points);
+  })
+);
+
+  const budgetBreakdown = calculateBudgetBreakdown(
+  body.request,
+  aiPlan.itinerary
+);
+
+
+  const itineraryWithRoutes = {
+  ...aiPlan.itinerary,
+  days: aiPlan.itinerary.days.map((day, index) => ({
+    ...day,
+    routeGeometry: routeGeometryByDay[index],
+  })),
+};
+
+function getDayRoutePoints(
+  day: {
+    segments: {
+      morning: Array<{ coordinates?: { lat: number; lng: number } }>;
+      afternoon: Array<{ coordinates?: { lat: number; lng: number } }>;
+      evening: Array<{ coordinates?: { lat: number; lng: number } }>;
+    };
+  },
+  destination: { coordinates?: { lat: number; lng: number } }
+): Array<{ lat: number; lng: number }> {
+  const points: Array<{ lat: number; lng: number }> = [];
+
+  if (destination.coordinates) {
+    points.push(destination.coordinates);
+  }
+
+  const segments = [
+    day.segments.morning,
+    day.segments.afternoon,
+    day.segments.evening,
+  ];
+
+  segments.forEach((activities) => {
+    activities.forEach((activity) => {
+      if (activity.coordinates) {
+        points.push(activity.coordinates);
+      }
+    });
   });
+
+  return points;
+}
 
   /*
    * Step 4:

@@ -160,6 +160,7 @@ export interface ItineraryDay {
   date: string;
   weather?: Weather;
   segments: Record<DaySegment, Activity[]>;
+  routeGeometry?: Array<[number, number]>;
 }
 
 export interface Itinerary {
@@ -243,6 +244,20 @@ export interface AIItineraryInput {
   request: TripRequest;
   weather: WeatherResult;
   eligiblePlaces: TravelPlace[];
+
+  routing: {
+    fromDestination: Array<{
+      distanceKm?: number;
+      travelTimeMinutes?: number;
+    }>;
+
+    betweenPlaces: Array<
+      Array<{
+        distanceKm?: number;
+        travelTimeMinutes?: number;
+      }>
+    >;
+  };
 }
 
 export interface AIItineraryOutput {
