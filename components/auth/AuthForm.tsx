@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { FormEvent, useState } from "react";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
+  const supabase = createClient();
+
   const [notice, setNotice] = useState<string | null>(null);
   const isSignup = mode === "signup";
 

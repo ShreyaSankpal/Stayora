@@ -31,9 +31,20 @@ export function SiteHeader() {
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
-          <Link href="/login" className="text-sm text-ink-muted hover:text-ink">
+          <Link
+            href="/login"
+            className="text-sm text-ink-muted hover:text-ink"
+          >
             Login
           </Link>
+
+          <Link
+            href="/signup"
+            className="text-sm text-ink-muted hover:text-ink"
+          >
+            Sign up
+          </Link>
+
           <Link
             href="/plan"
             className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-hover"
@@ -66,9 +77,15 @@ export function SiteHeader() {
                 {link.label}
               </Link>
             ))}
+
             <Link href="/login" onClick={() => setOpen(false)}>
               Login
             </Link>
+
+            <Link href="/signup" onClick={() => setOpen(false)}>
+              Sign up
+            </Link>
+
             <Link
               href="/plan"
               onClick={() => setOpen(false)}
