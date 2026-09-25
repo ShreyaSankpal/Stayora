@@ -52,14 +52,12 @@ export function MapPlaceholder({
     (marker) => marker.coordinates
   );
 
- const routeCoordinates =
-  itinerary?.days.flatMap(
-    (day) => day.routeGeometry ?? []
-  ) ?? [];
-
-console.log("ROUTE GEOMETRY:", routeCoordinates);
-
   const destinationCoordinates = destination?.coordinates;
+
+  const firstRoutePoint =
+    itinerary?.days.find(
+      (day) => day.routeGeometry && day.routeGeometry.length > 0
+    )?.routeGeometry?.[0];
 
   const mapCenter: [number, number] =
     destinationCoordinates
@@ -67,10 +65,10 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
           destinationCoordinates.lat,
           destinationCoordinates.lng,
         ]
-      : routeCoordinates[0] ?? [20.5937, 78.9629];
+      : firstRoutePoint ?? [20.5937, 78.9629];
 
   const destinationIcon = L.divIcon({
-    className: "stayora-destination-marker",
+    className: "steora-destination-marker",
     html: `
       <div
         style="
@@ -88,7 +86,7 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
   });
 
   const activityIcon = L.divIcon({
-    className: "stayora-activity-marker",
+    className: "steora-activity-marker",
     html: `
       <div
         style="
@@ -145,8 +143,7 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
                   <p>Trip destination</p>
 
                   <p>
-                    {destinationCoordinates.lat.toFixed(4)},
-                    {" "}
+                    {destinationCoordinates.lat.toFixed(4)},{" "}
                     {destinationCoordinates.lng.toFixed(4)}
                   </p>
                 </div>
@@ -176,8 +173,7 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
                     </p>
 
                     <p>
-                      {coordinates.lat.toFixed(4)},
-                      {" "}
+                      {coordinates.lat.toFixed(4)},{" "}
                       {coordinates.lng.toFixed(4)}
                     </p>
                   </div>
@@ -186,16 +182,23 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
             );
           })}
 
-          {routeCoordinates.length > 1 ? (
-            <Polyline
-              positions={routeCoordinates}
-              pathOptions={{
-                color: "#2563eb",
-                weight: 4,
-                opacity: 0.7,
-              }}
-            />
-          ) : null}
+          {itinerary?.days.map((day) => {
+            if (!day.routeGeometry || day.routeGeometry.length < 2) {
+              return null;
+            }
+
+            return (
+              <Polyline
+                key={`route-day-${day.dayNumber}`}
+                positions={day.routeGeometry}
+                pathOptions={{
+                  color: "#2563eb",
+                  weight: 4,
+                  opacity: 0.7,
+                }}
+              />
+            );
+          })}
         </MapContainer>
       </div>
 
@@ -207,6 +210,15 @@ console.log("ROUTE GEOMETRY:", routeCoordinates);
         <p className="mt-1">
           {activityMarkers.length} activity markers
           available
+        </p>
+
+        <p className="mt-1">
+          {itinerary?.days.filter(
+            (day) =>
+              day.routeGeometry &&
+              day.routeGeometry.length > 1
+          ).length ?? 0}{" "}
+          day routes available
         </p>
       </div>
     </section>

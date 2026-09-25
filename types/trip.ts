@@ -1,9 +1,10 @@
 /**
  * Steora domain types.
- * These describe the eventual API contract (TripRequest in, Trip out),
- * not a specific UI component.
+ * These describe the API contract (TripRequest in, Trip out).
  */
+
 import type { WeatherResult } from "@/lib/weather/weather";
+
 export type CurrencyCode =
   | "USD"
   | "EUR"
@@ -42,7 +43,14 @@ export type TripStatus =
   | "warning"
   | "needs_replanning";
 
-export type ConstraintStatus = "valid" | "warning" | "needs_replanning";
+export type ConstraintStatus =
+  | "valid"
+  | "warning"
+  | "needs_replanning";
+
+export type PriceStatus =
+  | "verified"
+  | "unavailable";
 
 export type ActivityCategory =
   | "activity"
@@ -53,7 +61,10 @@ export type ActivityCategory =
   | "rest"
   | "other";
 
-export type DaySegment = "morning" | "afternoon" | "evening";
+export type DaySegment =
+  | "morning"
+  | "afternoon"
+  | "evening";
 
 export type BudgetCategory =
   | "activities"
@@ -78,7 +89,10 @@ export interface Coordinates {
   lng: number;
 }
 
-export type DestinationResolution = "idle" | "suggested" | "resolved";
+export type DestinationResolution =
+  | "idle"
+  | "suggested"
+  | "resolved";
 
 export interface Destination {
   query: string;
@@ -88,12 +102,28 @@ export interface Destination {
   coordinates?: Coordinates;
   resolution: DestinationResolution;
 }
+
+export interface ActivitySource {
+  name: string;
+  url?: string;
+}
+
 export interface TravelPlace {
   name: string;
   coordinates: Coordinates;
   category: string;
+
   distanceFromDestinationKm?: number;
   travelTimeFromDestinationMinutes?: number;
+
+  price?: number;
+  currency?: CurrencyCode;
+  priceStatus: PriceStatus;
+
+  source?: ActivitySource;
+
+  relevanceScore?: number;
+  matchedInterests?: Interest[];
 }
 
 export interface TripRequest {
@@ -134,24 +164,24 @@ export interface RecommendationReason {
   detail: string;
 }
 
-export interface ActivitySource {
-  name: string;
-  url?: string;
-}
-
 export interface Activity {
   id: string;
   name: string;
   category: ActivityCategory;
   locationName: string;
   coordinates?: Coordinates;
+
   startTime: string;
   durationMinutes: number;
-  estimatedCost: number;
-  costIsEstimate: boolean;
+
+  cost?: number;
+  costStatus: PriceStatus;
+
   distanceFromPreviousKm?: number;
   travelTimeFromPreviousMinutes?: number;
+
   reasons: RecommendationReason[];
+
   source?: ActivitySource;
 }
 
@@ -159,7 +189,12 @@ export interface ItineraryDay {
   dayNumber: number;
   date: string;
   weather?: Weather;
-  segments: Record<DaySegment, Activity[]>;
+
+  segments: Record<
+    DaySegment,
+    Activity[]
+  >;
+
   routeGeometry?: Array<[number, number]>;
 }
 
@@ -189,6 +224,7 @@ export interface ConstraintResult {
     | "distance"
     | "weather"
     | "overall";
+
   label: string;
   status: ConstraintStatus;
   summary: string;
@@ -204,7 +240,9 @@ export interface Trip {
   status: TripStatus;
   createdAt: string;
   updatedAt: string;
+
   request: TripRequest;
+
   itinerary?: Itinerary;
   feasibility?: Feasibility;
   budgetBreakdown?: BudgetBreakdown;
@@ -230,12 +268,12 @@ export interface SavedTripSummary {
   status: TripStatus;
 }
 
-/** Payload the planner will eventually POST to /api/travel-plan */
+/** Payload sent to /api/travel-plan */
 export interface TravelPlanApiRequest {
   request: TripRequest;
 }
 
-/** Payload the planner will eventually receive from /api/travel-plan */
+/** Payload returned from /api/travel-plan */
 export interface TravelPlanApiResponse {
   trip: Trip;
 }

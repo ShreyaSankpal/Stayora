@@ -1,254 +1,93 @@
 import type {
+  Activity,
   BudgetBreakdown,
   BudgetCategory,
+  BudgetLine,
   CurrencyCode,
-  TravelStyle,
   TripRequest,
-  Itinerary,
 } from "@/types/trip";
 
-interface DestinationBudgetProfile {
-  foodPerPersonPerDay: number;
-  localTransportPerPersonPerDay: number;
-  accommodationPerRoomPerNight: number;
-  activityPerPersonPerDay: number;
-}
+/**
+ * Steora budget calculation.
+ *
+ * Important:
+ * We do NOT invent destination-based prices.
+ * Only verified activity costs are included as known costs.
+ *
+ * Costs that are unavailable are tracked separately so the UI
+ * can clearly tell the user that the budget is incomplete.
+ */
 
-const DESTINATION_PROFILES: Record<
-  string,
-  DestinationBudgetProfile
-> = {
-  singapore: {
-    foodPerPersonPerDay: 1500,
-    localTransportPerPersonPerDay: 500,
-    accommodationPerRoomPerNight: 12000,
-    activityPerPersonPerDay: 1500,
-  },
-
-  mumbai: {
-    foodPerPersonPerDay: 800,
-    localTransportPerPersonPerDay: 300,
-    accommodationPerRoomPerNight: 5000,
-    activityPerPersonPerDay: 700,
-  },
-
-  dubai: {
-    foodPerPersonPerDay: 1800,
-    localTransportPerPersonPerDay: 700,
-    accommodationPerRoomPerNight: 10000,
-    activityPerPersonPerDay: 2500,
-  },
-
-  bangkok: {
-    foodPerPersonPerDay: 900,
-    localTransportPerPersonPerDay: 350,
-    accommodationPerRoomPerNight: 4500,
-    activityPerPersonPerDay: 1000,
-  },
-
-  london: {
-    foodPerPersonPerDay: 3500,
-    localTransportPerPersonPerDay: 1200,
-    accommodationPerRoomPerNight: 18000,
-    activityPerPersonPerDay: 2500,
-  },
-
-  paris: {
-    foodPerPersonPerDay: 3200,
-    localTransportPerPersonPerDay: 1000,
-    accommodationPerRoomPerNight: 16000,
-    activityPerPersonPerDay: 2200,
-  },
-
-  tokyo: {
-    foodPerPersonPerDay: 2500,
-    localTransportPerPersonPerDay: 800,
-    accommodationPerRoomPerNight: 12000,
-    activityPerPersonPerDay: 1800,
-  },
-};
-
-const DEFAULT_PROFILE: DestinationBudgetProfile = {
-  foodPerPersonPerDay: 1200,
-  localTransportPerPersonPerDay: 500,
-  accommodationPerRoomPerNight: 7000,
-  activityPerPersonPerDay: 1200,
-};
-
-const TRAVEL_STYLE_MULTIPLIERS: Record<
-  TravelStyle,
-  number
-> = {
-  budget: 0.7,
-  balanced: 1,
-  relaxed: 1.15,
-  "fast-paced": 1.1,
-  adventure: 1.2,
-  luxury: 1.8,
-};
-
-function getDestinationKey(request: TripRequest) {
-  return (
-    request.destination.name ??
-    request.destination.query
-  )
-    .trim()
-    .toLowerCase();
-}
-
-function getBudgetProfile(
-  request: TripRequest
-): DestinationBudgetProfile {
-  const destinationKey =
-    getDestinationKey(request);
-
-  return (
-    DESTINATION_PROFILES[destinationKey] ??
-    DEFAULT_PROFILE
-  );
-}
-
-function getTripDays(request: TripRequest) {
-  const start = new Date(
-    `${request.startDate}T00:00:00`
-  );
-
-  const end = new Date(
-    `${request.endDate}T00:00:00`
-  );
-
-  const difference =
-    end.getTime() - start.getTime();
-
-  return Math.max(
-    1,
-    Math.ceil(
-      difference /
-        (1000 * 60 * 60 * 24)
-    ) + 1
-  );
-}
-
-function getNights(request: TripRequest) {
-  const start = new Date(
-    `${request.startDate}T00:00:00`
-  );
-
-  const end = new Date(
-    `${request.endDate}T00:00:00`
-  );
-
-  const difference =
-    end.getTime() - start.getTime();
-
-  return Math.max(
-    1,
-    Math.ceil(
-      difference /
-        (1000 * 60 * 60 * 24)
-    )
-  );
-}
-
-function roundCost(value: number) {
-  return Math.round(value / 50) * 50;
+export interface BudgetCalculationResult
+  extends BudgetBreakdown {
+  unpricedActivities: number;
+  pricingCoverage: number;
 }
 
 export function calculateBudgetBreakdown(
   request: TripRequest,
-  itinerary: Itinerary
-): BudgetBreakdown {
-  const profile =
-    getBudgetProfile(request);
+  itinerary: {
+    days: Array<{
+      segments: {
+        morning: Activity[];
+        afternoon: Activity[];
+        evening: Activity[];
+      };
+    }>;
+  }
+): BudgetCalculationResult {
+  const activities = itinerary.days.flatMap((day) => [
+    ...day.segments.morning,
+    ...day.segments.afternoon,
+    ...day.segments.evening,
+  ]);
 
-  const styleMultiplier =
-    TRAVEL_STYLE_MULTIPLIERS[
-      request.travelStyle
-    ];
-
-  const days = getTripDays(request);
-  const nights = getNights(request);
-
-  const travelers = Math.max(
-    1,
-    request.travelers
+  const pricedActivities = activities.filter(
+    (activity) =>
+      activity.cost !== undefined &&
+      activity.costStatus === "verified"
   );
 
-  const rooms = Math.max(
-    1,
-    Math.ceil(travelers / 2)
+  const unpricedActivities = activities.filter(
+    (activity) =>
+      activity.cost === undefined ||
+      activity.costStatus === "unavailable"
+  ).length;
+
+  const activitiesTotal = pricedActivities.reduce(
+    (total, activity) => total + (activity.cost ?? 0),
+    0
   );
 
-  const activityCosts =
-    itinerary.days.flatMap((day) => [
-      ...day.segments.morning,
-      ...day.segments.afternoon,
-      ...day.segments.evening,
-    ]).map(
-      (activity) =>
-        activity.estimatedCost ?? 0
-    );
-
-  const activityTicketTotal =
-    activityCosts.reduce(
-      (total, cost) => total + cost,
-      0
-    );
-
-  const food = roundCost(
-    profile.foodPerPersonPerDay *
-      travelers *
-      days *
-      styleMultiplier
+  const foodTotal = calculateVerifiedCategoryTotal(
+    activities,
+    "food"
   );
 
-  const localTransport = roundCost(
-    profile.localTransportPerPersonPerDay *
-      travelers *
-      days *
-      styleMultiplier
+  const transportTotal = calculateVerifiedCategoryTotal(
+    activities,
+    "transport"
   );
 
-  const accommodation = roundCost(
-    profile.accommodationPerRoomPerNight *
-      rooms *
-      nights *
-      styleMultiplier
-  );
-
-  const activities =
-    activityTicketTotal > 0
-      ? roundCost(activityTicketTotal)
-      : roundCost(
-          profile.activityPerPersonPerDay *
-            travelers *
-            days *
-            styleMultiplier
-        );
-
-  const lines: Array<{
-    category: BudgetCategory;
-    estimated: number;
-    booked: number | null;
-  }> = [
+  const lines: BudgetLine[] = [
     {
       category: "activities",
-      estimated: activities,
+      estimated: activitiesTotal,
       booked: null,
     },
     {
       category: "food",
-      estimated: food,
+      estimated: foodTotal,
       booked: null,
     },
     {
       category: "local_transport",
-      estimated: localTransport,
+      estimated: transportTotal,
       booked: null,
     },
     {
       category: "accommodation",
-      estimated: accommodation,
+      estimated: 0,
       booked: null,
     },
     {
@@ -258,19 +97,50 @@ export function calculateBudgetBreakdown(
     },
   ];
 
-  const estimatedTotal =
-    lines.reduce(
-      (total, line) =>
-        total + line.estimated,
-      0
-    );
+  const knownTotal = lines.reduce(
+    (total, line) => total + line.estimated,
+    0
+  );
+
+  const pricingCoverage =
+    activities.length === 0
+      ? 100
+      : Math.round(
+          (pricedActivities.length / activities.length) * 100
+        );
 
   return {
-    currency:
-      request.currency as CurrencyCode,
+    currency: request.currency as CurrencyCode,
     totalBudget: request.budget,
-    estimatedTotal,
+
+    /*
+     * This is currently the total of VERIFIED costs only.
+     * It must not be presented as the complete trip cost
+     * when some prices are unavailable.
+     */
+    estimatedTotal: knownTotal,
+
     bookedTotal: null,
     lines,
+
+    unpricedActivities,
+    pricingCoverage,
   };
+}
+
+function calculateVerifiedCategoryTotal(
+  activities: Activity[],
+  category: "food" | "transport"
+): number {
+  return activities
+    .filter(
+      (activity) =>
+        activity.category === category &&
+        activity.cost !== undefined &&
+        activity.costStatus === "verified"
+    )
+    .reduce(
+      (total, activity) => total + (activity.cost ?? 0),
+      0
+    );
 }

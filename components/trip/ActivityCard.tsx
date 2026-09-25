@@ -1,58 +1,65 @@
-import { formatMinutes, formatMoney } from "@/lib/format";
-import type { Activity, CurrencyCode } from "@/types/trip";
-import { RecommendationReasonList } from "./RecommendationReasonList";
+import type {
+  Activity,
+  CurrencyCode,
+} from "@/types/trip";
+
+interface ActivityCardProps {
+  activity: Activity;
+  currency: CurrencyCode;
+}
 
 export function ActivityCard({
   activity,
   currency,
-}: {
-  activity: Activity;
-  currency: CurrencyCode;
-}) {
+}: ActivityCardProps) {
+  const hasVerifiedPrice =
+    activity.cost !== undefined &&
+    activity.costStatus === "verified";
+
   return (
-    <article className="rounded-xl border border-line bg-paper p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
+    <div className="rounded-xl border p-4">
+      <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs uppercase tracking-wide text-ink-muted">
-            {activity.category} · {activity.startTime}
+          <h3 className="font-semibold">
+            {activity.name}
+          </h3>
+
+          <p className="text-sm text-muted-foreground">
+            {activity.locationName}
           </p>
-          <h4 className="mt-1 text-base font-semibold">{activity.name}</h4>
-          <p className="mt-1 text-sm text-ink-muted">{activity.locationName}</p>
         </div>
-        <p className="text-sm">
-          {activity.costIsEstimate ? "Est. " : ""}
-          {formatMoney(activity.estimatedCost, currency)}
-        </p>
+
+        <div className="text-right text-sm">
+          {hasVerifiedPrice ? (
+            <span>
+              {currency} {activity.cost}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">
+              Price unavailable
+            </span>
+          )}
+        </div>
       </div>
-      <dl className="mt-3 grid gap-2 text-xs text-ink-muted sm:grid-cols-2">
-        <div>
-          <dt className="inline">Duration: </dt>
-          <dd className="inline">{formatMinutes(activity.durationMinutes)}</dd>
+
+      <div className="mt-3 text-sm text-muted-foreground">
+        <span>{activity.startTime}</span>
+        {" • "}
+        <span>{activity.durationMinutes} min</span>
+      </div>
+
+      {activity.reasons.length > 0 && (
+        <div className="mt-3 space-y-1">
+          {activity.reasons.map((reason) => (
+            <p
+              key={`${activity.id}-${reason.code}`}
+              className="text-sm"
+            >
+              {reason.label}: {reason.detail}
+            </p>
+          ))}
         </div>
-        {activity.distanceFromPreviousKm != null ? (
-          <div>
-            <dt className="inline">Distance from previous: </dt>
-            <dd className="inline">{activity.distanceFromPreviousKm} km</dd>
-          </div>
-        ) : null}
-        {activity.travelTimeFromPreviousMinutes != null ? (
-          <div>
-            <dt className="inline">Travel time: </dt>
-            <dd className="inline">
-              {formatMinutes(activity.travelTimeFromPreviousMinutes)}
-            </dd>
-          </div>
-        ) : null}
-        {activity.source ? (
-          <div>
-            <dt className="inline">Source: </dt>
-            <dd className="inline">{activity.source.name}</dd>
-          </div>
-        ) : null}
-      </dl>
-      <RecommendationReasonList
-  reasons={activity.reasons ?? []}
-/>
-    </article>
+      )}
+    </div>
   );
 }

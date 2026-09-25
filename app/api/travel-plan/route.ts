@@ -218,7 +218,7 @@ function getDayRoutePoints(
     updatedAt: now,
     request: resolvedRequest,
     feasibility: finalFeasibility,
-    itinerary: aiPlan.itinerary,
+    itinerary: itineraryWithRoutes,
     budgetBreakdown,
   };
 
