@@ -1,10 +1,8 @@
 import { GoogleGenAI, Type } from "@google/genai";
+
 import type {
   AIItineraryInput,
   AIItineraryOutput,
-  ActivityCategory,
-  DaySegment,
-  RecommendationReasonCode,
   Activity,
   Itinerary,
   Weather,
@@ -13,6 +11,61 @@ import type {
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY,
 });
+
+const activitySchema = {
+  type: Type.OBJECT,
+  properties: {
+    id: {
+      type: Type.STRING,
+    },
+    name: {
+      type: Type.STRING,
+    },
+    category: {
+      type: Type.STRING,
+    },
+    locationName: {
+      type: Type.STRING,
+    },
+    startTime: {
+      type: Type.STRING,
+    },
+    durationMinutes: {
+      type: Type.NUMBER,
+    },
+    reasons: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          code: {
+            type: Type.STRING,
+          },
+          label: {
+            type: Type.STRING,
+          },
+          detail: {
+            type: Type.STRING,
+          },
+        },
+        required: [
+          "code",
+          "label",
+          "detail",
+        ],
+      },
+    },
+  },
+  required: [
+    "id",
+    "name",
+    "category",
+    "locationName",
+    "startTime",
+    "durationMinutes",
+    "reasons",
+  ],
+};
 
 const itinerarySchema = {
   type: Type.OBJECT,
@@ -36,200 +89,15 @@ const itinerarySchema = {
                 properties: {
                   morning: {
                     type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        id: {
-                          type: Type.STRING,
-                        },
-                        name: {
-                          type: Type.STRING,
-                        },
-                        category: {
-                          type: Type.STRING,
-                        },
-                        locationName: {
-                          type: Type.STRING,
-                        },
-                        startTime: {
-                          type: Type.STRING,
-                        },
-                        durationMinutes: {
-                          type: Type.NUMBER,
-                        },
-                        estimatedCost: {
-                          type: Type.NUMBER,
-                        },
-                        costIsEstimate: {
-                          type: Type.BOOLEAN,
-                        },
-                        reasons: {
-                          type: Type.ARRAY,
-                          items: {
-                            type: Type.OBJECT,
-                            properties: {
-                              code: {
-                                type: Type.STRING,
-                              },
-                              label: {
-                                type: Type.STRING,
-                              },
-                              detail: {
-                                type: Type.STRING,
-                              },
-                            },
-                            required: [
-                              "code",
-                              "label",
-                              "detail",
-                            ],
-                          },
-                        },
-                      },
-                      required: [
-                        "id",
-                        "name",
-                        "category",
-                        "locationName",
-                        "startTime",
-                        "durationMinutes",
-                        "estimatedCost",
-                        "costIsEstimate",
-                        "reasons",
-                      ],
-                    },
+                    items: activitySchema,
                   },
-
                   afternoon: {
                     type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        id: {
-                          type: Type.STRING,
-                        },
-                        name: {
-                          type: Type.STRING,
-                        },
-                        category: {
-                          type: Type.STRING,
-                        },
-                        locationName: {
-                          type: Type.STRING,
-                        },
-                        startTime: {
-                          type: Type.STRING,
-                        },
-                        durationMinutes: {
-                          type: Type.NUMBER,
-                        },
-                        estimatedCost: {
-                          type: Type.NUMBER,
-                        },
-                        costIsEstimate: {
-                          type: Type.BOOLEAN,
-                        },
-                        reasons: {
-                          type: Type.ARRAY,
-                          items: {
-                            type: Type.OBJECT,
-                            properties: {
-                              code: {
-                                type: Type.STRING,
-                              },
-                              label: {
-                                type: Type.STRING,
-                              },
-                              detail: {
-                                type: Type.STRING,
-                              },
-                            },
-                            required: [
-                              "code",
-                              "label",
-                              "detail",
-                            ],
-                          },
-                        },
-                      },
-                      required: [
-                        "id",
-                        "name",
-                        "category",
-                        "locationName",
-                        "startTime",
-                        "durationMinutes",
-                        "estimatedCost",
-                        "costIsEstimate",
-                        "reasons",
-                      ],
-                    },
+                    items: activitySchema,
                   },
-
                   evening: {
                     type: Type.ARRAY,
-                    items: {
-                      type: Type.OBJECT,
-                      properties: {
-                        id: {
-                          type: Type.STRING,
-                        },
-                        name: {
-                          type: Type.STRING,
-                        },
-                        category: {
-                          type: Type.STRING,
-                        },
-                        locationName: {
-                          type: Type.STRING,
-                        },
-                        startTime: {
-                          type: Type.STRING,
-                        },
-                        durationMinutes: {
-                          type: Type.NUMBER,
-                        },
-                        estimatedCost: {
-                          type: Type.NUMBER,
-                        },
-                        costIsEstimate: {
-                          type: Type.BOOLEAN,
-                        },
-                        reasons: {
-                          type: Type.ARRAY,
-                          items: {
-                            type: Type.OBJECT,
-                            properties: {
-                              code: {
-                                type: Type.STRING,
-                              },
-                              label: {
-                                type: Type.STRING,
-                              },
-                              detail: {
-                                type: Type.STRING,
-                              },
-                            },
-                            required: [
-                              "code",
-                              "label",
-                              "detail",
-                            ],
-                          },
-                        },
-                      },
-                      required: [
-                        "id",
-                        "name",
-                        "category",
-                        "locationName",
-                        "startTime",
-                        "durationMinutes",
-                        "estimatedCost",
-                        "costIsEstimate",
-                        "reasons",
-                      ],
-                    },
+                    items: activitySchema,
                   },
                 },
                 required: [
@@ -308,20 +176,27 @@ export async function generateItinerary(
   input: AIItineraryInput
 ): Promise<AIItineraryOutput> {
   if (!process.env.GEMINI_API_KEY) {
-    throw new Error("GEMINI_API_KEY is missing");
+    throw new Error(
+      "GEMINI_API_KEY is missing"
+    );
   }
 
   const prompt = buildItineraryPrompt(input);
 
-  const response = await generateWithRetry(prompt);
+  const response =
+    await generateWithRetry(prompt);
 
   if (!response.text) {
-    throw new Error("Gemini returned an empty response");
+    throw new Error(
+      "Gemini returned an empty response"
+    );
   }
 
   try {
     const parsed =
-      JSON.parse(response.text) as AIItineraryOutput;
+      JSON.parse(
+        response.text
+      ) as AIItineraryOutput;
 
     const enrichedItinerary =
       enrichItineraryWithRealData(
@@ -340,7 +215,9 @@ export async function generateItinerary(
   }
 }
 
-async function generateWithRetry(prompt: string) {
+async function generateWithRetry(
+  prompt: string
+) {
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       return await ai.models.generateContent({
@@ -363,7 +240,10 @@ async function generateWithRetry(prompt: string) {
       );
 
       await new Promise((resolve) =>
-        setTimeout(resolve, attempt * 2000)
+        setTimeout(
+          resolve,
+          attempt * 2000
+        )
       );
     }
   }
@@ -383,9 +263,9 @@ function buildItineraryPrompt(
   } = input;
 
   return `
-You are the itinerary planning engine for Stayora, an AI travel planning application.
+You are the itinerary planning engine for Steora, an AI travel planning application.
 
-Your job is to create a realistic day-by-day travel itinerary using ONLY the travel data supplied below.
+Your job is to create a realistic day-by-day travel itinerary using ONLY the real travel data supplied below.
 
 TRIP REQUIREMENTS
 
@@ -413,7 +293,7 @@ ${request.travelStyle}
 Daily pace:
 ${request.dailyPace}
 
-Maximum travel time:
+Maximum preferred travel time:
 ${request.maxTravelTimeMinutes} minutes
 
 Additional preferences:
@@ -423,60 +303,69 @@ WEATHER DATA
 
 ${JSON.stringify(weather, null, 2)}
 
-ELIGIBLE PLACES
+RANKED REAL PLACES
 
 ${JSON.stringify(eligiblePlaces, null, 2)}
 
-PLANNING RULES
+IMPORTANT DATA INTEGRITY RULES
 
-1. Create one itinerary day for every date from the start date through the end date.
+1. Use ONLY places present in the supplied ranked real places.
 
-2. Use the supplied eligible places as the main activity candidates.
+2. Never invent a place, attraction, restaurant, cafe, landmark, activity, coordinate, distance, travel time, rating, opening hour, ticket price, or booking price.
 
-3. Do not invent attractions, places, restaurants, coordinates, distances, or travel times that are not present in the supplied data.
+3. Activity names MUST exactly match the supplied place names.
 
-4. Respect the user's interests, travel style, and daily pace.
+4. Do not create new place names.
 
-5. Respect the maximum travel-time constraint.
+5. Do not create prices.
 
-6. Avoid scheduling too many activities in one day.
+6. Do not estimate or guess activity costs.
 
-7. Group activities logically by time of day.
+7. Do not put a cost value anywhere in the itinerary.
 
-8. Consider the supplied weather data when deciding which activities are suitable.
+8. Price information will be handled separately by Steora's verified pricing system.
 
-9. Keep the estimated trip cost within the user's total budget whenever possible.
+9. If a place has no verified price, it must remain unpriced.
 
-10. Every selected activity must contain a clear reason for why it was selected.
+10. Maximum travel time is a PREFERENCE, not an automatic exclusion rule.
 
-11. Use only these recommendation reason codes:
-   - matches_interests
-   - fits_budget
-   - fits_available_time
-   - close_to_previous
-   - suitable_for_weather
-   - matches_travel_style
+11. A place that exceeds the preferred travel time may still be selected if it is highly relevant to the user's interests.
 
-12. Costs are estimates unless actual booking prices are provided.
+12. If a selected place exceeds the preferred travel time, include a reason explaining that it is beyond the preferred travel time.
 
-13. Do not claim that anything has been booked.
+13. Use the supplied relevance scores and matched interests when deciding which places are useful.
 
-14. Return ONLY the JSON structure requested by the response schema.
+14. Consider distance and travel time when ordering activities.
 
-15. Every activity must have a unique id within the entire itinerary.
+15. Avoid unnecessary backtracking.
 
-16. Every activity must include a reasons array containing at least one reason object.
+16. Consider the supplied weather data when choosing suitable activities.
 
-17. Each reason must contain:
-   - code
-   - label
-   - detail
+17. Respect the user's daily pace.
 
-18. Activity names must match the supplied eligible place names exactly.
+18. Avoid scheduling too many activities in one day.
 
-19. Do not create new place names.
+19. Create one itinerary day for every date from the start date through the end date.
 
-Create a practical itinerary rather than simply listing every available place.
+20. Every selected activity must have a unique id.
+
+21. Every selected activity must contain at least one recommendation reason.
+
+22. Use only these recommendation reason codes:
+    - matches_interests
+    - fits_available_time
+    - close_to_previous
+    - suitable_for_weather
+    - matches_travel_style
+    - beyond_preferred_travel_time
+
+23. Do not claim that anything has been booked.
+
+24. Return ONLY the JSON structure requested by the response schema.
+
+25. The budgetBreakdown returned by the AI must NOT be treated as authoritative. Verified pricing is calculated separately after itinerary generation.
+
+Create a practical itinerary rather than listing every available place.
 `;
 }
 
@@ -491,51 +380,59 @@ function enrichItineraryWithRealData(
     ])
   );
 
-  const days = itinerary.days.map((day) => {
-    const forecast = weatherByDate.get(day.date);
+  const days = itinerary.days.map(
+    (day) => {
+      const forecast =
+        weatherByDate.get(day.date);
 
-    const weather = forecast
-      ? createWeatherFromForecast(forecast)
-      : undefined;
+      const weather = forecast
+        ? createWeatherFromForecast(
+            forecast
+          )
+        : undefined;
 
-    const allActivities = [
-      ...day.segments.morning,
-      ...day.segments.afternoon,
-      ...day.segments.evening,
-    ];
+      const allActivities = [
+        ...day.segments.morning,
+        ...day.segments.afternoon,
+        ...day.segments.evening,
+      ];
 
-    const enrichedActivities =
-      enrichActivitiesWithRouting(
-        allActivities,
-        input
-      );
+      const enrichedActivities =
+        enrichActivitiesWithRouting(
+          allActivities,
+          input
+        );
 
-    let activityIndex = 0;
+      let activityIndex = 0;
 
-    return {
-      ...day,
-      weather,
-      segments: {
-        morning: enrichedActivities.slice(
-          activityIndex,
-          (activityIndex +=
-            day.segments.morning.length)
-        ),
+      return {
+        ...day,
+        weather,
+        segments: {
+          morning:
+            enrichedActivities.slice(
+              activityIndex,
+              (activityIndex +=
+                day.segments.morning.length)
+            ),
 
-        afternoon: enrichedActivities.slice(
-          activityIndex,
-          (activityIndex +=
-            day.segments.afternoon.length)
-        ),
+          afternoon:
+            enrichedActivities.slice(
+              activityIndex,
+              (activityIndex +=
+                day.segments.afternoon.length)
+            ),
 
-        evening: enrichedActivities.slice(
-          activityIndex,
-          (activityIndex +=
-            day.segments.evening.length)
-        ),
-      },
-    };
-  });
+          evening:
+            enrichedActivities.slice(
+              activityIndex,
+              (activityIndex +=
+                day.segments.evening.length)
+            ),
+        },
+      };
+    }
+  );
 
   return {
     ...itinerary,
@@ -547,62 +444,86 @@ function enrichActivitiesWithRouting(
   activities: Activity[],
   input: AIItineraryInput
 ): Activity[] {
-  let previousPlaceIndex: number | null = null;
+  let previousPlaceIndex:
+    | number
+    | null = null;
 
-  return activities.map((activity) => {
-    const matchingPlace = findMatchingPlace(
-      activity.name,
-      input.eligiblePlaces
-    );
+  return activities.map(
+    (activity) => {
+      const matchingPlace =
+        findMatchingPlace(
+          activity.name,
+          input.eligiblePlaces
+        );
 
-    if (!matchingPlace) {
-      return activity;
-    }
+      if (!matchingPlace) {
+        return {
+          ...activity,
+          cost: undefined,
+          costStatus: "unavailable",
+        };
+      }
 
-    const currentPlaceIndex =
-      input.eligiblePlaces.findIndex(
-        (place) =>
-          normalizeName(place.name) ===
-          normalizeName(matchingPlace.name)
-      );
+      const currentPlaceIndex =
+        input.eligiblePlaces.findIndex(
+          (place) =>
+            normalizeName(place.name) ===
+            normalizeName(
+              matchingPlace.name
+            )
+        );
 
-    if (currentPlaceIndex === -1) {
-      return activity;
-    }
+      if (currentPlaceIndex === -1) {
+        return {
+          ...activity,
+          cost: undefined,
+          costStatus: "unavailable",
+        };
+      }
 
-    let distanceFromPreviousKm =
-      matchingPlace.distanceFromDestinationKm;
+      let distanceFromPreviousKm =
+        matchingPlace.distanceFromDestinationKm;
 
-    let travelTimeFromPreviousMinutes =
-      matchingPlace.travelTimeFromDestinationMinutes;
+      let travelTimeFromPreviousMinutes =
+        matchingPlace.travelTimeFromDestinationMinutes;
 
-    if (
-      previousPlaceIndex !== null &&
-      input.routing?.betweenPlaces[
-        previousPlaceIndex
-      ]?.[currentPlaceIndex]
-    ) {
-      const route =
-        input.routing.betweenPlaces[
+      if (
+        previousPlaceIndex !== null &&
+        input.routing?.betweenPlaces[
           previousPlaceIndex
-        ][currentPlaceIndex];
+        ]?.[currentPlaceIndex]
+      ) {
+        const route =
+          input.routing.betweenPlaces[
+            previousPlaceIndex
+          ][currentPlaceIndex];
 
-      distanceFromPreviousKm =
-        route.distanceKm;
+        distanceFromPreviousKm =
+          route.distanceKm;
 
-      travelTimeFromPreviousMinutes =
-        route.travelTimeMinutes;
+        travelTimeFromPreviousMinutes =
+          route.travelTimeMinutes;
+      }
+
+      previousPlaceIndex =
+        currentPlaceIndex;
+
+      return {
+        ...activity,
+
+        coordinates:
+          matchingPlace.coordinates,
+
+        distanceFromPreviousKm,
+
+        travelTimeFromPreviousMinutes,
+
+        cost: undefined,
+
+        costStatus: "unavailable",
+      };
     }
-
-    previousPlaceIndex = currentPlaceIndex;
-
-    return {
-      ...activity,
-      coordinates: matchingPlace.coordinates,
-      distanceFromPreviousKm,
-      travelTimeFromPreviousMinutes,
-    };
-  });
+  );
 }
 
 function findMatchingPlace(
@@ -619,7 +540,9 @@ function findMatchingPlace(
   );
 }
 
-function normalizeName(name: string): string {
+function normalizeName(
+  name: string
+): string {
   return name
     .trim()
     .toLowerCase()
@@ -631,13 +554,15 @@ function createWeatherFromForecast(
 ): Weather {
   return {
     date: forecast.date,
-    condition: weatherCodeToCondition(
-      forecast.weatherCode
-    ),
-    summary: weatherCodeToSummary(
-      forecast.weatherCode,
-      forecast.precipitationChance
-    ),
+    condition:
+      weatherCodeToCondition(
+        forecast.weatherCode
+      ),
+    summary:
+      weatherCodeToSummary(
+        forecast.weatherCode,
+        forecast.precipitationChance
+      ),
     highC: forecast.highC,
     lowC: forecast.lowC,
     precipitationChance:

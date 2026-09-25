@@ -3,12 +3,15 @@ export interface PlaceResult {
   latitude: number;
   longitude: number;
   category: string;
+  placeId?: string;
+  distanceFromDestinationKm?: number;
 }
 
 interface GeoapifyFeature {
   properties?: {
     name?: string;
     categories?: string[];
+    place_id?: string;
   };
   geometry?: {
     coordinates?: [number, number];
@@ -37,17 +40,12 @@ export async function getPlaces(
   const apiKey = process.env.GEOAPIFY_API_KEY;
 
   if (!apiKey) {
-    throw new Error("Geoapify API key is missing");
+    throw new Error("Geoapify places API key is missing");
   }
 
   const results = await Promise.all(
     SEARCH_CATEGORIES.map((category) =>
-      searchPlaces(
-        category,
-        latitude,
-        longitude,
-        apiKey
-      )
+      searchPlaces(category, latitude, longitude, apiKey)
     )
   );
 
@@ -65,14 +63,25 @@ export async function getPlaces(
       continue;
     }
 
+    const placeWithDistance: PlaceResult = {
+      name: place.name,
+      latitude: place.latitude,
+      longitude: place.longitude,
+      category: place.category,
+      ...(place.placeId
+        ? { placeId: place.placeId }
+        : {}),
+      distanceFromDestinationKm: distance,
+    };
+
     const key = normalizePlaceName(place.name);
 
     if (!uniquePlaces.has(key)) {
-      uniquePlaces.set(key, place);
+      uniquePlaces.set(key, placeWithDistance);
     }
   }
 
-  return Array.from(uniquePlaces.values()).slice(0, 20);
+  return Array.from(uniquePlaces.values());
 }
 
 async function searchPlaces(
@@ -85,35 +94,18 @@ async function searchPlaces(
     "https://api.geoapify.com/v2/places"
   );
 
-  url.searchParams.set(
-    "categories",
-    category
-  );
-
+  url.searchParams.set("categories", category);
   url.searchParams.set(
     "filter",
     `circle:${longitude},${latitude},50000`
   );
-
   url.searchParams.set(
     "bias",
     `proximity:${longitude},${latitude}`
   );
-
-  url.searchParams.set(
-    "limit",
-    "20"
-  );
-
-  url.searchParams.set(
-    "lang",
-    "en"
-  );
-
-  url.searchParams.set(
-    "apiKey",
-    apiKey
-  );
+  url.searchParams.set("limit", "20");
+  url.searchParams.set("lang", "en");
+  url.searchParams.set("apiKey", apiKey);
 
   const response = await fetch(url);
 
@@ -133,36 +125,39 @@ async function searchPlaces(
   const data =
     (await response.json()) as GeoapifyResponse;
 
-  return (data.features ?? [])
-    .map((feature) => {
-      const coordinates =
-        feature.geometry?.coordinates;
+  const places: PlaceResult[] = [];
 
-      const name =
-        feature.properties?.name;
+  for (const feature of data.features ?? []) {
+    const coordinates =
+      feature.geometry?.coordinates;
 
-      if (!coordinates || !name) {
-        return null;
-      }
+    const name = feature.properties?.name;
 
-      return {
-        name,
-        latitude: coordinates[1],
-        longitude: coordinates[0],
-        category:
-          feature.properties?.categories?.[0] ??
-          category,
-      };
-    })
-    .filter(
-      (place): place is PlaceResult =>
-        place !== null
-    );
+    if (!coordinates || !name) {
+      continue;
+    }
+
+    const place: PlaceResult = {
+      name,
+      latitude: coordinates[1],
+      longitude: coordinates[0],
+      category:
+        feature.properties?.categories?.[0] ??
+        category,
+    };
+
+    if (feature.properties?.place_id) {
+      place.placeId =
+        feature.properties.place_id;
+    }
+
+    places.push(place);
+  }
+
+  return places;
 }
 
-function normalizePlaceName(
-  name: string
-): string {
+function normalizePlaceName(name: string): string {
   return name
     .trim()
     .toLowerCase()
@@ -201,8 +196,6 @@ function calculateDistanceKm(
   return earthRadiusKm * c;
 }
 
-function toRadians(
-  degrees: number
-): number {
+function toRadians(degrees: number): number {
   return (degrees * Math.PI) / 180;
 }

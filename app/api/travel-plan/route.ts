@@ -1,13 +1,16 @@
 import { calculateBudgetBreakdown } from "@/lib/travel/budget";
 import { generateItinerary } from "@/lib/ai/itinerary";
-import { filterEligiblePlaces } from "@/lib/travel/filter";
-import { calculateTravelTimes,
-  calculateRouteGeometry, } from "@/lib/travel/routing";
+import { rankPlaces } from "@/lib/travel/filter";
+import {
+  calculateTravelTimes,
+  calculateRouteGeometry,
+} from "@/lib/travel/routing";
 import { evaluateConstraints } from "@/lib/travel/constraints";
 import { normalizeTravelData } from "@/lib/travel/normalizer";
 import { getWeather } from "@/lib/weather/weather";
 import { getPlaces } from "@/lib/places/places";
 import { geocodeDestination } from "@/lib/location/geocoding";
+
 import type {
   ConstraintResult,
   ConstraintStatus,
@@ -18,7 +21,8 @@ import type {
 export async function POST(
   request: Request
 ): Promise<Response> {
-  const body: TravelPlanApiRequest = await request.json();
+  const body: TravelPlanApiRequest =
+    await request.json();
 
   const destinationQuery =
     body.request.destination.query.trim();
@@ -63,13 +67,21 @@ export async function POST(
   const travelDataWithRoutes =
     await calculateTravelTimes(normalizedData);
 
-  const eligiblePlaces = filterEligiblePlaces(
+  /*
+   * Step 1:
+   * Rank places instead of silently removing them.
+   *
+   * User preferences such as maximum travel time
+   * influence ranking but do not automatically
+   * remove a place.
+   */
+  const rankedPlaces = rankPlaces(
     body.request,
     travelDataWithRoutes.places
   );
 
   /*
-   * Step 1:
+   * Step 2:
    * Check constraints that can be evaluated
    * before generating the itinerary.
    */
@@ -77,66 +89,192 @@ export async function POST(
     body.request,
     {
       ...travelDataWithRoutes,
-      places: eligiblePlaces,
+      places: rankedPlaces,
     }
   );
 
   /*
-   * Step 2:
-   * Generate the AI itinerary.
+   * Step 3:
+   * Generate the AI itinerary using the ranked
+   * real places.
    */
   const aiPlan = await generateItinerary({
-  request: body.request,
-  weather: travelDataWithRoutes.weather,
-  eligiblePlaces,
-  routing: travelDataWithRoutes.routing,
-});
-  /*
-   * Step 3:
-   * Calculate the estimated cost of the
-   * generated itinerary.
-   */
+    request: body.request,
+    weather: travelDataWithRoutes.weather,
+    eligiblePlaces: rankedPlaces,
+    routing: travelDataWithRoutes.routing,
+  });
 
-const routeGeometryByDay = await Promise.all(
-  aiPlan.itinerary.days.map(async (day) => {
-    const points = getDayRoutePoints(
-      day,
-      travelDataWithRoutes.destination
+  /*
+   * Step 4:
+   * Calculate route geometry for each day.
+   */
+  const routeGeometryByDay = await Promise.all(
+    aiPlan.itinerary.days.map(async (day) => {
+      const points = getDayRoutePoints(
+        day,
+        travelDataWithRoutes.destination
+      );
+
+      if (points.length < 2) {
+        return [];
+      }
+
+      return calculateRouteGeometry(points);
+    })
+  );
+
+  /*
+   * Step 5:
+   * Calculate the verified cost of the generated
+   * itinerary.
+   */
+  const budgetBreakdown =
+    calculateBudgetBreakdown(
+      body.request,
+      aiPlan.itinerary
     );
 
-    if (points.length < 2) {
-      return [];
-    }
-
-    return calculateRouteGeometry(points);
-  })
-);
-
-  const budgetBreakdown = calculateBudgetBreakdown(
-  body.request,
-  aiPlan.itinerary
-);
-
-
   const itineraryWithRoutes = {
-  ...aiPlan.itinerary,
-  days: aiPlan.itinerary.days.map((day, index) => ({
-    ...day,
-    routeGeometry: routeGeometryByDay[index],
-  })),
-};
+    ...aiPlan.itinerary,
+
+    days: aiPlan.itinerary.days.map(
+      (day, index) => ({
+        ...day,
+        routeGeometry:
+          routeGeometryByDay[index],
+      })
+    ),
+  };
+
+  /*
+   * Step 6:
+   * Validate the final known budget.
+   */
+  const budgetCheck = checkFinalBudget(
+    body.request.budget,
+    budgetBreakdown.estimatedTotal,
+    body.request.currency
+  );
+
+  const finalChecks =
+    feasibility.checks.filter(
+      (check) => check.id !== "overall"
+    );
+
+  const existingBudgetIndex =
+    finalChecks.findIndex(
+      (check) => check.id === "budget"
+    );
+
+  if (existingBudgetIndex !== -1) {
+    finalChecks[existingBudgetIndex] =
+      budgetCheck;
+  } else {
+    finalChecks.push(budgetCheck);
+  }
+
+  const finalOverall =
+    getOverallStatus(finalChecks);
+
+  finalChecks.push({
+    id: "overall",
+    label: "Overall feasibility",
+    status: finalOverall,
+    summary:
+      getOverallSummary(finalOverall),
+  });
+
+  const finalFeasibility = {
+    overall: finalOverall,
+    checks: finalChecks,
+  };
+
+  /*
+   * Keep the ranked real places in the resolved
+   * request so the frontend can access them.
+   */
+  const resolvedRequest = {
+    ...body.request,
+    destination:
+      travelDataWithRoutes.destination,
+    weather:
+      travelDataWithRoutes.weather,
+    places: rankedPlaces,
+  };
+
+  const now =
+    new Date().toISOString();
+
+  const trip: TravelPlanApiResponse["trip"] = {
+    id: crypto.randomUUID(),
+
+    status:
+      finalFeasibility.overall ===
+      "needs_replanning"
+        ? "needs_replanning"
+        : finalFeasibility.overall ===
+            "warning"
+          ? "warning"
+          : "valid",
+
+    createdAt: now,
+    updatedAt: now,
+
+    request: resolvedRequest,
+    feasibility: finalFeasibility,
+    itinerary: itineraryWithRoutes,
+    budgetBreakdown,
+  };
+
+  console.log(
+    "FINAL TRIP RESPONSE:",
+    JSON.stringify(trip, null, 2)
+  );
+
+  return Response.json({ trip });
+}
 
 function getDayRoutePoints(
   day: {
     segments: {
-      morning: Array<{ coordinates?: { lat: number; lng: number } }>;
-      afternoon: Array<{ coordinates?: { lat: number; lng: number } }>;
-      evening: Array<{ coordinates?: { lat: number; lng: number } }>;
+      morning: Array<{
+        coordinates?: {
+          lat: number;
+          lng: number;
+        };
+      }>;
+
+      afternoon: Array<{
+        coordinates?: {
+          lat: number;
+          lng: number;
+        };
+      }>;
+
+      evening: Array<{
+        coordinates?: {
+          lat: number;
+          lng: number;
+        };
+      }>;
     };
   },
-  destination: { coordinates?: { lat: number; lng: number } }
-): Array<{ lat: number; lng: number }> {
-  const points: Array<{ lat: number; lng: number }> = [];
+
+  destination: {
+    coordinates?: {
+      lat: number;
+      lng: number;
+    };
+  }
+): Array<{
+  lat: number;
+  lng: number;
+}> {
+  const points: Array<{
+    lat: number;
+    lng: number;
+  }> = [];
 
   if (destination.coordinates) {
     points.push(destination.coordinates);
@@ -159,77 +297,6 @@ function getDayRoutePoints(
   return points;
 }
 
-  /*
-   * Step 4:
-   * Validate the final estimated budget.
-   */
-  const budgetCheck = checkFinalBudget(
-    body.request.budget,
-    budgetBreakdown.estimatedTotal,
-    body.request.currency
-  );
-
-  const finalChecks = feasibility.checks.filter(
-    (check) => check.id !== "overall"
-  );
-
-  const existingBudgetIndex = finalChecks.findIndex(
-    (check) => check.id === "budget"
-  );
-
-  if (existingBudgetIndex !== -1) {
-    finalChecks[existingBudgetIndex] = budgetCheck;
-  } else {
-    finalChecks.push(budgetCheck);
-  }
-
-  const finalOverall = getOverallStatus(finalChecks);
-
-  finalChecks.push({
-    id: "overall",
-    label: "Overall feasibility",
-    status: finalOverall,
-    summary: getOverallSummary(finalOverall),
-  });
-
-  const finalFeasibility = {
-    overall: finalOverall,
-    checks: finalChecks,
-  };
-
-  const resolvedRequest = {
-    ...body.request,
-    destination: travelDataWithRoutes.destination,
-    weather: travelDataWithRoutes.weather,
-    places: eligiblePlaces,
-  };
-
-  const now = new Date().toISOString();
-
-  const trip: TravelPlanApiResponse["trip"] = {
-    id: crypto.randomUUID(),
-    status:
-      finalFeasibility.overall === "needs_replanning"
-        ? "needs_replanning"
-        : finalFeasibility.overall === "warning"
-          ? "warning"
-          : "valid",
-    createdAt: now,
-    updatedAt: now,
-    request: resolvedRequest,
-    feasibility: finalFeasibility,
-    itinerary: itineraryWithRoutes,
-    budgetBreakdown,
-  };
-
-  console.log(
-    "FINAL TRIP RESPONSE:",
-    JSON.stringify(trip, null, 2)
-  );
-
-  return Response.json({ trip });
-}
-
 function checkFinalBudget(
   budget: number,
   estimatedTotal: number,
@@ -240,7 +307,8 @@ function checkFinalBudget(
       id: "budget",
       label: "Budget",
       status: "needs_replanning",
-      summary: "The trip budget must be greater than zero.",
+      summary:
+        "The trip budget must be greater than zero.",
     };
   }
 
@@ -249,7 +317,9 @@ function checkFinalBudget(
       id: "budget",
       label: "Budget",
       status: "needs_replanning",
-      summary: `The estimated trip cost is ${currency} ${estimatedTotal}, which exceeds your ${currency} ${budget} budget.`,
+      summary:
+        `The known verified trip cost is ${currency} ${estimatedTotal}, ` +
+        `which exceeds your ${currency} ${budget} budget.`,
     };
   }
 
@@ -257,7 +327,9 @@ function checkFinalBudget(
     id: "budget",
     label: "Budget",
     status: "valid",
-    summary: `The estimated trip cost of ${currency} ${estimatedTotal} is within your ${currency} ${budget} budget.`,
+    summary:
+      `The known verified trip cost of ${currency} ${estimatedTotal} ` +
+      `is within your ${currency} ${budget} budget.`,
   };
 }
 
@@ -266,7 +338,8 @@ function getOverallStatus(
 ): ConstraintStatus {
   if (
     checks.some(
-      (check) => check.status === "needs_replanning"
+      (check) =>
+        check.status === "needs_replanning"
     )
   ) {
     return "needs_replanning";
@@ -274,7 +347,8 @@ function getOverallStatus(
 
   if (
     checks.some(
-      (check) => check.status === "warning"
+      (check) =>
+        check.status === "warning"
     )
   ) {
     return "warning";
@@ -291,7 +365,7 @@ function getOverallSummary(
   }
 
   if (status === "warning") {
-    return "The trip can continue, but some places do not satisfy all travel constraints.";
+    return "The trip can continue, but some places do not satisfy all travel preferences.";
   }
 
   return "The available trip constraints are currently satisfied.";

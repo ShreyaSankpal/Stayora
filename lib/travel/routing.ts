@@ -18,6 +18,8 @@ interface GeoapifyRouteResponse {
   }>;
 }
 
+const MAX_PLACE_MATRIX_SIZE = 1000;
+
 export async function calculateTravelTimes(
   travelData: NormalizedTravelData
 ): Promise<NormalizedTravelData> {
@@ -31,18 +33,23 @@ export async function calculateTravelTimes(
     return travelData;
   }
 
-  const destinationCoordinates = travelData.destination.coordinates;
+  const destinationCoordinates =
+    travelData.destination.coordinates;
 
   if (!destinationCoordinates) {
-    throw new Error("Destination coordinates are missing");
+    throw new Error(
+      "Destination coordinates are missing"
+    );
   }
 
-  const placeCoordinates = travelData.places.map((place) => ({
-    location: [
-      place.coordinates.lng,
-      place.coordinates.lat,
-    ],
-  }));
+  const placeCoordinates = travelData.places.map(
+    (place) => ({
+      location: [
+        place.coordinates.lng,
+        place.coordinates.lat,
+      ],
+    })
+  );
 
   const destinationSource = {
     location: [
@@ -50,6 +57,10 @@ export async function calculateTravelTimes(
       destinationCoordinates.lat,
     ],
   };
+
+  // --------------------------------------------------
+  // STEP 1: Destination -> every real place
+  // --------------------------------------------------
 
   const destinationResponse = await fetch(
     `https://api.geoapify.com/v1/routematrix?apiKey=${apiKey}`,
@@ -68,7 +79,8 @@ export async function calculateTravelTimes(
   );
 
   if (!destinationResponse.ok) {
-    const errorText = await destinationResponse.text();
+    const errorText =
+      await destinationResponse.text();
 
     throw new Error(
       "Geoapify destination routing failed: " +
@@ -92,23 +104,69 @@ export async function calculateTravelTimes(
     );
   }
 
-  const places = travelData.places.map((place, index) => {
-    const route = destinationMatrix[index];
+  // Add real destination distance/time to every place.
+  const places = travelData.places.map(
+    (place, index) => {
+      const route =
+        destinationMatrix[index];
 
-    return {
-      ...place,
+      return {
+        ...place,
 
-      distanceFromDestinationKm:
-        route?.distance != null
-          ? route.distance / 1000
-          : undefined,
+        distanceFromDestinationKm:
+          route?.distance != null
+            ? route.distance / 1000
+            : undefined,
 
-      travelTimeFromDestinationMinutes:
-        route?.time != null
-          ? route.time / 60
-          : undefined,
-    };
-  });
+        travelTimeFromDestinationMinutes:
+          route?.time != null
+            ? route.time / 60
+            : undefined,
+      };
+    }
+  );
+
+  // --------------------------------------------------
+  // STEP 2: Select places for place-to-place routing
+  // --------------------------------------------------
+
+  /*
+   * Geoapify allows at most 1000 matrix elements
+   * for a regular API call.
+   *
+   * 31 x 31 = 961
+   *
+   * We keep ALL discovered places, but calculate
+   * detailed place-to-place routing only for the
+   * closest 31 places.
+   */
+
+  const maxRoutedPlaces = Math.floor(
+    Math.sqrt(MAX_PLACE_MATRIX_SIZE)
+  );
+
+  const routedPlaceIndexes = places
+    .map((place, index) => ({
+      index,
+      distance:
+        place.distanceFromDestinationKm ??
+        Number.POSITIVE_INFINITY,
+    }))
+    .sort(
+      (a, b) =>
+        a.distance - b.distance
+    )
+    .slice(0, maxRoutedPlaces)
+    .map((item) => item.index);
+
+  const routedPlaceCoordinates =
+    routedPlaceIndexes.map(
+      (index) => placeCoordinates[index]
+    );
+
+  // --------------------------------------------------
+  // STEP 3: Place -> place routing
+  // --------------------------------------------------
 
   const placeResponse = await fetch(
     `https://api.geoapify.com/v1/routematrix?apiKey=${apiKey}`,
@@ -119,15 +177,16 @@ export async function calculateTravelTimes(
       },
       body: JSON.stringify({
         mode: "drive",
-        sources: placeCoordinates,
-        targets: placeCoordinates,
+        sources: routedPlaceCoordinates,
+        targets: routedPlaceCoordinates,
         units: "metric",
       }),
     }
   );
 
   if (!placeResponse.ok) {
-    const errorText = await placeResponse.text();
+    const errorText =
+      await placeResponse.text();
 
     throw new Error(
       "Geoapify place-to-place routing failed: " +
@@ -142,7 +201,8 @@ export async function calculateTravelTimes(
   const placeData =
     (await placeResponse.json()) as GeoapifyMatrixResponse;
 
-  const placeMatrix = placeData.sources_to_targets;
+  const placeMatrix =
+    placeData.sources_to_targets;
 
   if (!placeMatrix) {
     throw new Error(
@@ -150,20 +210,65 @@ export async function calculateTravelTimes(
     );
   }
 
-  const fromDestination = destinationMatrix.map((route) => ({
-    distanceKm:
-      route?.distance != null
-        ? route.distance / 1000
-        : undefined,
+  // --------------------------------------------------
+  // STEP 4: Build full routing matrix
+  // --------------------------------------------------
 
-    travelTimeMinutes:
-      route?.time != null
-        ? route.time / 60
-        : undefined,
-  }));
+  /*
+   * Keep the same indexes as the complete places array.
+   *
+   * Places outside the routed subset will have
+   * undefined place-to-place routing data.
+   */
 
-  const betweenPlaces = placeMatrix.map((row) =>
-    row.map((route) => ({
+  const betweenPlaces: Array<
+    Array<{
+      distanceKm?: number;
+      travelTimeMinutes?: number;
+    }>
+  > = places.map(() =>
+    places.map(() => ({}))
+  );
+
+  routedPlaceIndexes.forEach(
+    (
+      originalSourceIndex,
+      matrixSourceIndex
+    ) => {
+      routedPlaceIndexes.forEach(
+        (
+          originalTargetIndex,
+          matrixTargetIndex
+        ) => {
+          const route =
+            placeMatrix[
+              matrixSourceIndex
+            ]?.[matrixTargetIndex];
+
+          betweenPlaces[
+            originalSourceIndex
+          ][originalTargetIndex] = {
+            distanceKm:
+              route?.distance != null
+                ? route.distance / 1000
+                : undefined,
+
+            travelTimeMinutes:
+              route?.time != null
+                ? route.time / 60
+                : undefined,
+          };
+        }
+      );
+    }
+  );
+
+  // --------------------------------------------------
+  // STEP 5: Destination routing data
+  // --------------------------------------------------
+
+  const fromDestination =
+    destinationMatrix.map((route) => ({
       distanceKm:
         route?.distance != null
           ? route.distance / 1000
@@ -173,8 +278,7 @@ export async function calculateTravelTimes(
         route?.time != null
           ? route.time / 60
           : undefined,
-    }))
-  );
+    }));
 
   return {
     ...travelData,
@@ -183,19 +287,28 @@ export async function calculateTravelTimes(
 
     routing: {
       fromDestination,
-
       betweenPlaces,
     },
   };
 }
 
+// --------------------------------------------------
+// Route geometry
+// --------------------------------------------------
+
 export async function calculateRouteGeometry(
-  waypoints: Array<{ lat: number; lng: number }>
+  waypoints: Array<{
+    lat: number;
+    lng: number;
+  }>
 ): Promise<Array<[number, number]>> {
-  const apiKey = process.env.GEOAPIFY_API_KEY;
+  const apiKey =
+    process.env.GEOAPIFY_API_KEY;
 
   if (!apiKey) {
-    throw new Error("Geoapify API key is missing");
+    throw new Error(
+      "Geoapify API key is missing"
+    );
   }
 
   if (waypoints.length < 2) {
@@ -203,7 +316,10 @@ export async function calculateRouteGeometry(
   }
 
   const waypointString = waypoints
-    .map((point) => `${point.lat},${point.lng}`)
+    .map(
+      (point) =>
+        `${point.lat},${point.lng}`
+    )
     .join("|");
 
   const params = new URLSearchParams({
@@ -218,7 +334,8 @@ export async function calculateRouteGeometry(
   );
 
   if (!response.ok) {
-    const errorText = await response.text();
+    const errorText =
+      await response.text();
 
     throw new Error(
       "Geoapify route geometry failed: " +
@@ -234,7 +351,8 @@ export async function calculateRouteGeometry(
     (await response.json()) as GeoapifyRouteResponse;
 
   const lines =
-    data.features?.[0]?.geometry?.coordinates;
+    data.features?.[0]?.geometry
+      ?.coordinates;
 
   if (!lines) {
     throw new Error(
@@ -242,5 +360,10 @@ export async function calculateRouteGeometry(
     );
   }
 
-  return lines.flat().map(([lng, lat]) => [lat, lng]);
+  return lines
+    .flat()
+    .map(([lng, lat]) => [
+      lat,
+      lng,
+    ]);
 }
