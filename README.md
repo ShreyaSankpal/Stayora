@@ -554,7 +554,7 @@ The project is being developed incrementally, with each part of the planning pip
 
 Computer Engineering Student
 
-`Full-Stack Development` • `AI/ML` • `DSA` • `Product Development`
+
 
 ---
 
